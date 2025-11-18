@@ -109,7 +109,7 @@ class WebSocketService {
 
     try {
       // Create WebSocket URL with token
-      const wsUrl = `ws://172.16.7.106:8000/ws/admin/${userId}?token=${token}`;
+      const wsUrl = `ws://localhost:8000/ws/admin/${userId}?token=${token}`;
       
       this.socket = new WebSocket(wsUrl);
       this.currentUserId = userId;

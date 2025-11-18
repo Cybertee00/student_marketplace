@@ -17,12 +17,12 @@ export default defineConfig({
     port: 3001,
     proxy: {
       '/api': {
-        target: 'http://172.16.7.106:8000',
+        target: 'http://localhost:8000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
       '/images': {
-        target: 'http://172.16.7.106:8000',
+        target: 'http://localhost:8000',
         changeOrigin: true,
       },
     },

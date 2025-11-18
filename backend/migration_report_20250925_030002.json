@@ -1,0 +1,16 @@
+{
+  "products": {
+    "success": false,
+    "error": "Products folder not found"
+  },
+  "profiles": {
+    "success": false,
+    "error": "Profile folder not found"
+  },
+  "database_update": {
+    "success": true,
+    "mapping_file": "image_migration_mapping.json",
+    "message": "Database update mapping created"
+  },
+  "migration_log": []
+}

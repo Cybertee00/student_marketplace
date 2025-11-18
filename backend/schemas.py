@@ -57,15 +57,24 @@ class UserResponse(UserBase):
     
     @validator('profile_img', pre=True)
     def transform_profile_img_url(cls, v):
-        """Transform profile image filename to URL"""
+        """Transform profile image filename to Google Drive URL"""
         if not v:
             return None
         
-        # Use relative URL that works with the admin panel proxy
-        if not v.startswith('http') and not v.startswith('/'):
-            return f"/images/profile/{v}"
-        elif v.startswith('http://172.16.7.106:8000/images/profile/'):
-            return v.replace('http://172.16.7.106:8000/images/profile/', '/images/profile/')
+        # If it's already a Google Drive URL, keep it as is
+        if v.startswith('https://drive.google.com/'):
+            return v
+        # If it's a Google Drive file ID, convert to public URL
+        elif v and not v.startswith('http') and not v.startswith('/'):
+            # Assume it's a Google Drive file ID if it's not a local path
+            return f"https://drive.google.com/uc?id={v}"
+        else:
+            # Legacy local URLs - convert to relative path for admin panel
+            if not v.startswith('http') and not v.startswith('/'):
+                return f"/images/profile/{v}"
+            elif v.startswith('http://') and '/images/profile/' in v:
+                # Extract just the filename from any URL format
+                return '/images/profile/' + v.split('/')[-1]
         
         return v
 
@@ -134,17 +143,33 @@ class ProductResponse(ProductBase):
     
     @validator('images', pre=True)
     def transform_image_urls(cls, v):
-        """Transform image filenames to URLs"""
+        """Transform image filenames to Google Drive URLs"""
         if not v:
             return []
         
-        # Use relative URLs that work with the admin panel proxy
+        # Handle Google Drive URLs and legacy local URLs
         if isinstance(v, list):
-            return [
-                f"/images/{filename}" if not filename.startswith('http') and not filename.startswith('/')
-                else filename.replace('http://172.16.7.106:8000/images', '/images')
-                for filename in v
-            ]
+            transformed_urls = []
+            for filename in v:
+                # If it's already a Google Drive URL, keep it as is
+                if filename.startswith('https://drive.google.com/'):
+                    transformed_urls.append(filename)
+                # If it's a Google Drive file ID, convert to public URL
+                elif filename and not filename.startswith('http') and not filename.startswith('/'):
+                    # Assume it's a Google Drive file ID if it's not a local path
+                    transformed_urls.append(f"https://drive.google.com/uc?id={filename}")
+                else:
+                    # Legacy local URLs - convert to relative path for admin panel
+                    # Remove any old IP addresses and convert to relative path
+                    cleaned_filename = filename
+                    if filename.startswith('http://'):
+                        # Extract just the filename from any URL format
+                        cleaned_filename = filename.split('/')[-1]
+                    transformed_urls.append(
+                        f"/images/{cleaned_filename}" if not cleaned_filename.startswith('/')
+                        else cleaned_filename
+                    )
+            return transformed_urls
         return v
 
 # ---------------- CART SCHEMAS ----------------

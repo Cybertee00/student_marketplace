@@ -9,6 +9,7 @@ from models import User
 from schemas import UserResponse, ProfileUpdateRequest, PasswordChangeRequest
 from auth import get_current_user, verify_password, get_password_hash
 from routers.images import save_uploaded_file
+from hybrid_storage_service import hybrid_storage
 
 router = APIRouter(prefix="/profile", tags=["Profile"])
 
@@ -77,24 +78,31 @@ def upload_profile_picture(
         )
     
     try:
-        # Remove old profile picture if it exists
-        if current_user.profile_img:
-            old_file_path = os.path.join("profile_pictures", current_user.profile_img)
-            if os.path.exists(old_file_path):
-                os.remove(old_file_path)
-                print(f"Removed old profile picture: {old_file_path}")
+        # Generate unique filename
+        ext = os.path.splitext(file.filename)[1].lower()
+        unique_id = str(uuid.uuid4())
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{timestamp}_{unique_id}{ext}"
         
-        # Save the new uploaded file
-        filename = save_uploaded_file(file, "profile_pictures")
+        # Read file content
+        file_content = file.file.read()
         
-        # Update user's profile picture
-        current_user.profile_img = filename
-        db.commit()
+        # Upload to Google Drive
+        result = hybrid_storage.save_image_locally(file_content, filename, "profiles")
         
-        return {
-            "message": "Profile picture uploaded successfully",
-            "profile_picture": filename
-        }
+        if result["success"]:
+            # Update user's profile picture with filename
+            current_user.profile_img = result["filename"]
+            db.commit()
+            
+            print(f"Profile picture uploaded to Google Drive successfully: {filename}")
+            return {
+                "message": "Profile picture uploaded successfully to Google Drive",
+                "profile_picture": result["file_id"],
+                "public_url": result["public_url"]
+            }
+        else:
+            raise Exception(f"Failed to upload to Google Drive: {result['error']}")
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

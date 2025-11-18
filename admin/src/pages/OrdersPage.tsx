@@ -22,6 +22,44 @@ import { Order, OrderFilters } from '@/types';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { toast } from 'react-hot-toast';
 
+// Helper function to normalize image URLs for the admin panel
+// Converts full URLs with IPs to relative paths that work with Vite proxy
+const normalizeImageUrl = (imageUrl: string): string => {
+  if (!imageUrl) return '';
+  
+  // If it's already a relative path, return as is
+  if (imageUrl.startsWith('/images/')) {
+    return imageUrl;
+  }
+  
+  // If it's a full URL with any IP address, extract the path
+  if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+    // Check if it's a profile image
+    const profileMatch = imageUrl.match(/\/images\/profile\/(.+)$/);
+    if (profileMatch) {
+      return `/images/profile/${profileMatch[1]}`;
+    }
+    
+    // Extract the path part after /images/
+    const match = imageUrl.match(/\/images\/(.+)$/);
+    if (match) {
+      return `/images/${match[1]}`;
+    }
+    // If no /images/ in URL, try to extract filename
+    const filename = imageUrl.split('/').pop();
+    if (filename) {
+      return `/images/${filename}`;
+    }
+  }
+  
+  // If it's just a filename, prepend /images/
+  if (!imageUrl.startsWith('/')) {
+    return `/images/${imageUrl}`;
+  }
+  
+  return imageUrl;
+};
+
 const OrdersPage: React.FC = () => {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
@@ -290,8 +328,17 @@ const OrdersPage: React.FC = () => {
                         {order.buyer.profile_img ? (
                           <img
                             className="h-10 w-10 rounded-full"
-                            src={order.buyer.profile_img}
+                            src={normalizeImageUrl(order.buyer.profile_img)}
                             alt=""
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              target.style.display = 'none';
+                              // Show fallback user icon
+                              const parent = target.parentElement;
+                              if (parent) {
+                                parent.innerHTML = '<div class="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center"><svg class="h-5 w-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg></div>';
+                              }
+                            }}
                           />
                         ) : (
                           <div className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
@@ -485,9 +532,13 @@ const OrdersPage: React.FC = () => {
                           <div className="w-12 h-12 bg-gray-200 rounded-lg flex items-center justify-center">
                             {item.product.images && item.product.images.length > 0 ? (
                               <img
-                                src={item.product.images[0]}
+                                src={normalizeImageUrl(item.product.images[0])}
                                 alt={item.product.title}
                                 className="w-12 h-12 rounded-lg object-cover"
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement;
+                                  target.style.display = 'none';
+                                }}
                               />
                             ) : (
                               <Package className="w-6 h-6 text-gray-400" />

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session
 import os
 import uuid
@@ -11,6 +11,7 @@ from database import get_db
 from models import User
 from auth import get_current_user
 from rbac import require_permission, Permissions
+from hybrid_storage_service import hybrid_storage
 
 router = APIRouter(prefix="/images", tags=["images"])
 
@@ -62,8 +63,8 @@ async def upload_product_image(
     db: Session = Depends(get_db)
 ):
     """
-    Upload a product image
-    Returns the filename that should be stored in the database
+    Upload a product image to Google Drive
+    Returns the Google Drive file ID and public URL
     """
     
     print(f"Image upload request from user {current_user.username}")
@@ -85,41 +86,32 @@ async def upload_product_image(
             detail=f"Invalid file type. Allowed types: {', '.join(ALLOWED_EXTENSIONS)}"
         )
     
-    # Ensure directory exists
-    ensure_images_directory()
-    
-    # Generate unique filename
-    filename = generate_unique_filename(file.filename)
-    file_path = os.path.join(IMAGES_DIR, filename)
-    
-    print(f"Saving image to: {file_path}")
-    
     try:
-        # Save the file
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        # Generate unique filename
+        filename = generate_unique_filename(file.filename)
         
-        # Verify file was saved
-        if os.path.exists(file_path):
-            file_size = os.path.getsize(file_path)
-            print(f"Image saved successfully: {filename} ({file_size} bytes)")
+        # Read file content
+        file_content = await file.read()
+        
+        # Upload to Google Drive
+        result = hybrid_storage.save_image_locally(file_content, filename, "products")
+        
+        if result["success"]:
+            print(f"Image uploaded to Google Drive successfully: {filename}")
+            return {
+                "success": True,
+                "filename": filename,
+                "file_id": result["file_id"],
+                "public_url": result["public_url"],
+                "url": result["public_url"],  # For backward compatibility
+                "message": "Image uploaded successfully to Google Drive"
+            }
         else:
-            print(f"ERROR: File was not saved to {file_path}")
-            raise Exception("File was not saved")
-        
-        return {
-            "success": True,
-            "filename": filename,
-            "url": f"/images/{filename}",
-            "message": "Image uploaded successfully"
-        }
+            print(f"Failed to upload to Google Drive: {result['error']}")
+            raise HTTPException(status_code=500, detail=f"Failed to upload to Google Drive: {result['error']}")
         
     except Exception as e:
         print(f"Error uploading image: {str(e)}")
-        # Clean up if save failed
-        if os.path.exists(file_path):
-            os.remove(file_path)
-            print(f"Cleaned up failed upload: {file_path}")
         raise HTTPException(status_code=500, detail=f"Failed to upload image: {str(e)}")
 
 @router.post("/upload-multiple")
@@ -129,8 +121,8 @@ async def upload_multiple_product_images(
     db: Session = Depends(get_db)
 ):
     """
-    Upload multiple product images
-    Returns list of filenames that should be stored in the database
+    Upload multiple product images to Google Drive
+    Returns list of file IDs and public URLs
     """
     
     if len(files) > MAX_IMAGES_PER_PRODUCT:
@@ -138,9 +130,6 @@ async def upload_multiple_product_images(
             status_code=400,
             detail=f"Too many images. Maximum {MAX_IMAGES_PER_PRODUCT} images allowed"
         )
-    
-    # Ensure directory exists
-    ensure_images_directory()
     
     uploaded_files = []
     failed_files = []
@@ -165,17 +154,26 @@ async def upload_multiple_product_images(
             
             # Generate unique filename
             filename = generate_unique_filename(file.filename)
-            file_path = os.path.join(IMAGES_DIR, filename)
             
-            # Save the file
-            with open(file_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
+            # Read file content
+            file_content = await file.read()
             
-            uploaded_files.append({
-                "filename": filename,
-                "url": f"/images/{filename}",
-                "original_name": file.filename
-            })
+            # Upload to Google Drive
+            result = hybrid_storage.save_image_locally(file_content, filename, "products")
+            
+            if result["success"]:
+                uploaded_files.append({
+                    "filename": filename,
+                    "file_id": result["file_id"],
+                    "public_url": result["public_url"],
+                    "url": result["public_url"],  # For backward compatibility
+                    "original_name": file.filename
+                })
+            else:
+                failed_files.append({
+                    "filename": file.filename,
+                    "error": result["error"]
+                })
             
         except Exception as e:
             failed_files.append({

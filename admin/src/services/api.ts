@@ -35,10 +35,19 @@ class ApiService {
 
     // Request interceptor to add auth token
     this.api.interceptors.request.use(
-      (config) => {
-        const token = localStorage.getItem('admin_token');
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
+      async (config) => {
+        // Try to get token from Supabase session first
+        const { supabase } = await import('./supabase');
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session?.access_token) {
+          config.headers.Authorization = `Bearer ${session.access_token}`;
+        } else {
+          // Fallback to localStorage token
+          const token = localStorage.getItem('admin_token');
+          if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+          }
         }
         return config;
       },
@@ -127,25 +136,43 @@ class ApiService {
   }
 
   async uploadImage(file: File): Promise<ApiResponse<{ filename: string; url: string }>> {
-    const formData = new FormData();
-    formData.append('file', file);
+    // Get signed URL from backend for Supabase Storage
+    const { data: uploadData } = await this.api.post('/images/upload-url', {
+      bucket: 'products',
+      filename: file.name,
+    });
     
-    const response: AxiosResponse<any> = await this.api.post('/images/upload', formData, {
+    const { signed_url, path, public_url } = uploadData;
+    
+    // Upload directly to Supabase Storage using signed URL
+    const uploadResponse = await fetch(signed_url, {
+      method: 'PUT',
+      body: file,
       headers: {
-        'Content-Type': 'multipart/form-data',
+        'Content-Type': file.type,
       },
     });
     
-    // Transform the backend response to match ApiResponse format
-    const backendResponse = response.data;
+    if (!uploadResponse.ok) {
+      throw new Error('Failed to upload image to Supabase Storage');
+    }
+    
     return {
-      success: backendResponse.success,
-      message: backendResponse.message,
+      success: true,
+      message: 'Image uploaded successfully',
       data: {
-        filename: backendResponse.filename,
-        url: backendResponse.url
-      }
+        filename: path,
+        url: public_url,
+      },
     };
+  }
+
+  async getUploadUrl(bucket: string, filename: string): Promise<{ signed_url: string; path: string; public_url: string }> {
+    const response: AxiosResponse<{ signed_url: string; path: string; public_url: string }> = await this.api.post('/images/upload-url', {
+      bucket,
+      filename,
+    });
+    return response.data;
   }
 
   // Order endpoints

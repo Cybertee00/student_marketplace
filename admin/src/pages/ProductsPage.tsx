@@ -6,6 +6,38 @@ import { Product, ProductFilters } from '@/types';
 import { toast } from 'react-hot-toast';
 import LoadingSpinner from '@/components/LoadingSpinner';
 
+// Helper function to normalize image URLs for the admin panel
+// Converts full URLs with IPs to relative paths that work with Vite proxy
+const normalizeImageUrl = (imageUrl: string): string => {
+  if (!imageUrl) return '';
+  
+  // If it's already a relative path, return as is
+  if (imageUrl.startsWith('/images/')) {
+    return imageUrl;
+  }
+  
+  // If it's a full URL with any IP address, extract the path
+  if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+    // Extract the path part after /images/
+    const match = imageUrl.match(/\/images\/(.+)$/);
+    if (match) {
+      return `/images/${match[1]}`;
+    }
+    // If no /images/ in URL, try to extract filename
+    const filename = imageUrl.split('/').pop();
+    if (filename) {
+      return `/images/${filename}`;
+    }
+  }
+  
+  // If it's just a filename, prepend /images/
+  if (!imageUrl.startsWith('/')) {
+    return `/images/${imageUrl}`;
+  }
+  
+  return imageUrl;
+};
+
 interface EditProductFormProps {
   product: Product;
   onSubmit: (data: Partial<Product>) => void;
@@ -84,7 +116,8 @@ const AddProductForm: React.FC<AddProductFormProps> = ({ onSubmit, onCancel }) =
             console.log('Upload response:', response);
             
             if (response.success && response.data) {
-              const imageUrl = `http://localhost:8000/images/${response.data.filename}`;
+              // Use public URL from Supabase Storage
+              const imageUrl = response.data.url;
               console.log(`Successfully uploaded: ${imageUrl}`);
               return imageUrl;
             } else {
@@ -924,10 +957,10 @@ const ProductsPage: React.FC = () => {
                                          <td className="px-6 py-4 whitespace-nowrap">
                        <div className="flex items-center">
                          <div className="h-12 w-12 flex-shrink-0">
-                           <img
-                             className="h-12 w-12 rounded-lg object-cover border border-gray-200"
-                             src={product.images && product.images.length > 0 ? product.images[0] : 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0zMCAzNUg3MFY2NUgzMFYzNVoiIGZpbGw9IiNEMUQ1REIiLz4KPHBhdGggZD0iTTM1IDQwSDY1VjYwSDM1VjQwWiIgZmlsbD0iIzlDQTNBRiIvPgo8L3N2Zz4K'}
-                             alt={product.title}
+                          <img
+                            className="h-12 w-12 rounded-lg object-cover border border-gray-200"
+                            src={product.images && product.images.length > 0 ? normalizeImageUrl(product.images[0]) : 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0zMCAzNUg3MFY2NUgzMFYzNVoiIGZpbGw9IiNEMUQ1REIiLz4KPHBhdGggZD0iTTM1IDQwSDY1VjYwSDM1VjQwWiIgZmlsbD0iIzlDQTNBRiIvPgo8L3N2Zz4K'}
+                            alt={product.title}
                              onError={(e) => {
                                const target = e.target as HTMLImageElement;
                                target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0zMCAzNUg3MFY2NUgzMFYzNVoiIGZpbGw9IiNEMUQ1REIiLz4KPHBhdGggZD0iTTM1IDQwSDY1VjYwSDM1VjQwWiIgZmlsbD0iIzlDQTNBRiIvPgo8L3N2Zz4K';
@@ -1158,11 +1191,11 @@ const ProductsPage: React.FC = () => {
                     {selectedProduct.images.map((image, index) => (
                       <div key={index} className="relative">
                         <img
-                          src={image}
+                          src={normalizeImageUrl(image)}
                           alt={`Product image ${index + 1}`}
                           className="w-full h-48 object-cover rounded-lg border border-gray-200 cursor-pointer hover:opacity-90 transition-opacity"
                           onClick={() => {
-                            setSelectedImage(image);
+                            setSelectedImage(normalizeImageUrl(image));
                             setIsImageModalOpen(true);
                           }}
                           onError={(e) => {
@@ -1260,10 +1293,10 @@ const ProductsPage: React.FC = () => {
              >
                ✕
              </button>
-             <img
-               src={selectedImage}
-               alt="Product image"
-               className="max-w-full max-h-full object-contain rounded-lg"
+            <img
+              src={selectedImage ? normalizeImageUrl(selectedImage) : ''}
+              alt="Product image"
+              className="max-w-full max-h-full object-contain rounded-lg"
                onError={(e) => {
                  const target = e.target as HTMLImageElement;
                  target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0zMCAzNUg3MFY2NUgzMFYzNVoiIGZpbGw9IiNEMUQ1REIiLz4KPHBhdGggZD0iTTM1IDQwSDY1VjYwSDM1VjQwWiIgZmlsbD0iIzlDQTNBRiIvPgo8L3N2Zz4K';
