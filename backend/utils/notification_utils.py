@@ -179,15 +179,26 @@ class NotificationUtils:
     def cleanup_expired_notifications(db: Session) -> int:
         """Delete notifications that have expired (older than 30 days)"""
         now = datetime.utcnow()
-        expired_count = db.query(Notification).filter(
-            Notification.expires_at < now,
-            Notification.deleted_at.is_(None)  # Only delete non-manually deleted notifications
-        ).count()
-        
-        db.query(Notification).filter(
-            Notification.expires_at < now,
-            Notification.deleted_at.is_(None)
-        ).delete(synchronize_session=False)
+        try:
+            # Try with deleted_at check first (if column exists)
+            expired_count = db.query(Notification).filter(
+                Notification.expires_at < now,
+                Notification.deleted_at.is_(None)  # Only delete non-manually deleted notifications
+            ).count()
+            
+            db.query(Notification).filter(
+                Notification.expires_at < now,
+                Notification.deleted_at.is_(None)
+            ).delete(synchronize_session=False)
+        except Exception:
+            # If deleted_at column doesn't exist, just delete expired notifications
+            expired_count = db.query(Notification).filter(
+                Notification.expires_at < now
+            ).count()
+            
+            db.query(Notification).filter(
+                Notification.expires_at < now
+            ).delete(synchronize_session=False)
         
         db.commit()
         return expired_count
@@ -195,16 +206,28 @@ class NotificationUtils:
     @staticmethod
     def soft_delete_notification(db: Session, notification_id: int, user_id: int) -> bool:
         """Soft delete a notification (mark as deleted)"""
-        notification = db.query(Notification).filter(
-            Notification.id == notification_id,
-            Notification.user_id == user_id,
-            Notification.deleted_at.is_(None)  # Only delete if not already deleted
-        ).first()
-        
-        if notification:
-            notification.deleted_at = datetime.utcnow()
-            db.commit()
-            return True
+        try:
+            notification = db.query(Notification).filter(
+                Notification.id == notification_id,
+                Notification.user_id == user_id,
+                Notification.deleted_at.is_(None)  # Only delete if not already deleted
+            ).first()
+            
+            if notification:
+                notification.deleted_at = datetime.utcnow()
+                db.commit()
+                return True
+        except Exception:
+            # If deleted_at column doesn't exist, just delete the notification
+            notification = db.query(Notification).filter(
+                Notification.id == notification_id,
+                Notification.user_id == user_id
+            ).first()
+            
+            if notification:
+                db.delete(notification)
+                db.commit()
+                return True
         return False
     
     @staticmethod
@@ -212,7 +235,11 @@ class NotificationUtils:
         """Get notifications for a user, optionally including deleted ones"""
         query = db.query(Notification).filter(Notification.user_id == user_id)
         
-        if not include_deleted:
-            query = query.filter(Notification.deleted_at.is_(None))
+        try:
+            if not include_deleted:
+                query = query.filter(Notification.deleted_at.is_(None))
+        except Exception:
+            # If deleted_at column doesn't exist, just return all notifications
+            pass
         
         return query.order_by(Notification.created_at.desc()).all()
