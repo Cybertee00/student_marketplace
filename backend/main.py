@@ -8,8 +8,9 @@ from routers import auth, products, cart, orders, favorites, admin, users, image
 from routers import images_supabase
 from utils.scheduler import start_background_tasks, stop_background_tasks
 
-# Create database tables
-Base.metadata.create_all(bind=engine)
+# Note: Database tables should already exist in Supabase
+# Only create tables in development if needed
+# Base.metadata.create_all(bind=engine)  # Disabled for production
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
