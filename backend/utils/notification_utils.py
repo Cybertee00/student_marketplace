@@ -190,18 +190,26 @@ class NotificationUtils:
                 Notification.expires_at < now,
                 Notification.deleted_at.is_(None)
             ).delete(synchronize_session=False)
-        except Exception:
-            # If deleted_at column doesn't exist, just delete expired notifications
-            expired_count = db.query(Notification).filter(
-                Notification.expires_at < now
-            ).count()
             
-            db.query(Notification).filter(
-                Notification.expires_at < now
-            ).delete(synchronize_session=False)
-        
-        db.commit()
-        return expired_count
+            db.commit()
+            return expired_count
+        except Exception as e:
+            # If deleted_at column doesn't exist, rollback and try without it
+            db.rollback()
+            try:
+                expired_count = db.query(Notification).filter(
+                    Notification.expires_at < now
+                ).count()
+                
+                db.query(Notification).filter(
+                    Notification.expires_at < now
+                ).delete(synchronize_session=False)
+                
+                db.commit()
+                return expired_count
+            except Exception:
+                db.rollback()
+                return 0
     
     @staticmethod
     def soft_delete_notification(db: Session, notification_id: int, user_id: int) -> bool:
