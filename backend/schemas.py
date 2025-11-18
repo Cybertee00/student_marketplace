@@ -57,25 +57,20 @@ class UserResponse(UserBase):
     
     @validator('profile_img', pre=True)
     def transform_profile_img_url(cls, v):
-        """Transform profile image filename to Google Drive URL"""
+        """Transform profile image URL"""
         if not v:
             return None
         
-        # If it's already a Google Drive URL, keep it as is
-        if v.startswith('https://drive.google.com/'):
+        # If it's already a Supabase Storage URL, keep it as is
+        if v.startswith('https://') and 'supabase.co/storage' in v:
             return v
-        # If it's a Google Drive file ID, convert to public URL
-        elif v and not v.startswith('http') and not v.startswith('/'):
-            # Assume it's a Google Drive file ID if it's not a local path
-            return f"https://drive.google.com/uc?id={v}"
-        else:
-            # Legacy local URLs - convert to relative path for admin panel
-            if not v.startswith('http') and not v.startswith('/'):
-                return f"/images/profile/{v}"
-            elif v.startswith('http://') and '/images/profile/' in v:
-                # Extract just the filename from any URL format
-                return '/images/profile/' + v.split('/')[-1]
-        
+        # If it's already a full URL, keep it
+        elif v.startswith('http://') or v.startswith('https://'):
+            return v
+        # Legacy local files - convert to relative path
+        elif not v.startswith('/'):
+            return f"/images/profile/{v}"
+        # Already a relative path
         return v
 
 # ---------------- VERIFICATION SCHEMAS ----------------
@@ -143,32 +138,25 @@ class ProductResponse(ProductBase):
     
     @validator('images', pre=True)
     def transform_image_urls(cls, v):
-        """Transform image filenames to Google Drive URLs"""
+        """Transform image URLs (Supabase Storage or legacy local)"""
         if not v:
             return []
         
-        # Handle Google Drive URLs and legacy local URLs
         if isinstance(v, list):
             transformed_urls = []
-            for filename in v:
-                # If it's already a Google Drive URL, keep it as is
-                if filename.startswith('https://drive.google.com/'):
-                    transformed_urls.append(filename)
-                # If it's a Google Drive file ID, convert to public URL
-                elif filename and not filename.startswith('http') and not filename.startswith('/'):
-                    # Assume it's a Google Drive file ID if it's not a local path
-                    transformed_urls.append(f"https://drive.google.com/uc?id={filename}")
+            for url in v:
+                # If it's already a Supabase Storage URL, keep it as is
+                if url.startswith('https://') and 'supabase.co/storage' in url:
+                    transformed_urls.append(url)
+                # If it's already a full URL, keep it
+                elif url.startswith('http://') or url.startswith('https://'):
+                    transformed_urls.append(url)
+                # Legacy local files - convert to relative path
+                elif not url.startswith('/'):
+                    transformed_urls.append(f"/images/{url}")
+                # Already a relative path
                 else:
-                    # Legacy local URLs - convert to relative path for admin panel
-                    # Remove any old IP addresses and convert to relative path
-                    cleaned_filename = filename
-                    if filename.startswith('http://'):
-                        # Extract just the filename from any URL format
-                        cleaned_filename = filename.split('/')[-1]
-                    transformed_urls.append(
-                        f"/images/{cleaned_filename}" if not cleaned_filename.startswith('/')
-                        else cleaned_filename
-                    )
+                    transformed_urls.append(url)
             return transformed_urls
         return v
 
