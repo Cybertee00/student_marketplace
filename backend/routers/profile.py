@@ -9,7 +9,6 @@ from models import User
 from schemas import UserResponse, ProfileUpdateRequest, PasswordChangeRequest
 from auth import get_current_user, verify_password, get_password_hash
 from routers.images import save_uploaded_file
-from hybrid_storage_service import hybrid_storage
 
 router = APIRouter(prefix="/profile", tags=["Profile"])
 
@@ -84,25 +83,24 @@ def upload_profile_picture(
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{timestamp}_{unique_id}{ext}"
         
-        # Read file content
-        file_content = file.file.read()
+        # Save to local storage
+        profile_dir = "profile_pictures"
+        if not os.path.exists(profile_dir):
+            os.makedirs(profile_dir)
         
-        # Upload to Google Drive
-        result = hybrid_storage.save_image_locally(file_content, filename, "profiles")
+        filename = save_uploaded_file(file, profile_dir)
+        file_url = f"/images/profile/{filename}"
         
-        if result["success"]:
-            # Update user's profile picture with filename
-            current_user.profile_img = result["filename"]
-            db.commit()
-            
-            print(f"Profile picture uploaded to Google Drive successfully: {filename}")
-            return {
-                "message": "Profile picture uploaded successfully to Google Drive",
-                "profile_picture": result["file_id"],
-                "public_url": result["public_url"]
-            }
-        else:
-            raise Exception(f"Failed to upload to Google Drive: {result['error']}")
+        # Update user's profile picture with filename
+        current_user.profile_img = filename
+        db.commit()
+        
+        print(f"Profile picture saved locally: {filename}")
+        return {
+            "message": "Profile picture uploaded successfully (local storage)",
+            "profile_picture": filename,
+            "public_url": file_url
+        }
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

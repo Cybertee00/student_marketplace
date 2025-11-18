@@ -11,7 +11,6 @@ from database import get_db
 from models import User
 from auth import get_current_user
 from rbac import require_permission, Permissions
-from hybrid_storage_service import hybrid_storage
 
 router = APIRouter(prefix="/images", tags=["images"])
 
@@ -63,8 +62,8 @@ async def upload_product_image(
     db: Session = Depends(get_db)
 ):
     """
-    Upload a product image to Google Drive
-    Returns the Google Drive file ID and public URL
+    Upload a product image (legacy endpoint - use /images/upload-url for Supabase)
+    Saves to local storage for backward compatibility
     """
     
     print(f"Image upload request from user {current_user.username}")
@@ -87,28 +86,18 @@ async def upload_product_image(
         )
     
     try:
-        # Generate unique filename
-        filename = generate_unique_filename(file.filename)
+        # Save to local storage
+        ensure_images_directory()
+        filename = save_uploaded_file(file, IMAGES_DIR)
+        file_url = f"/images/{filename}"
         
-        # Read file content
-        file_content = await file.read()
-        
-        # Upload to Google Drive
-        result = hybrid_storage.save_image_locally(file_content, filename, "products")
-        
-        if result["success"]:
-            print(f"Image uploaded to Google Drive successfully: {filename}")
-            return {
-                "success": True,
-                "filename": filename,
-                "file_id": result["file_id"],
-                "public_url": result["public_url"],
-                "url": result["public_url"],  # For backward compatibility
-                "message": "Image uploaded successfully to Google Drive"
-            }
-        else:
-            print(f"Failed to upload to Google Drive: {result['error']}")
-            raise HTTPException(status_code=500, detail=f"Failed to upload to Google Drive: {result['error']}")
+        print(f"Image saved locally: {filename}")
+        return {
+            "success": True,
+            "filename": filename,
+            "url": file_url,
+            "message": "Image uploaded successfully (local storage)"
+        }
         
     except Exception as e:
         print(f"Error uploading image: {str(e)}")
@@ -121,8 +110,8 @@ async def upload_multiple_product_images(
     db: Session = Depends(get_db)
 ):
     """
-    Upload multiple product images to Google Drive
-    Returns list of file IDs and public URLs
+    Upload multiple product images (legacy endpoint - use /images/upload-multiple-urls for Supabase)
+    Saves to local storage for backward compatibility
     """
     
     if len(files) > MAX_IMAGES_PER_PRODUCT:
@@ -131,6 +120,7 @@ async def upload_multiple_product_images(
             detail=f"Too many images. Maximum {MAX_IMAGES_PER_PRODUCT} images allowed"
         )
     
+    ensure_images_directory()
     uploaded_files = []
     failed_files = []
     
@@ -152,28 +142,15 @@ async def upload_multiple_product_images(
                 })
                 continue
             
-            # Generate unique filename
-            filename = generate_unique_filename(file.filename)
+            # Save to local storage
+            filename = save_uploaded_file(file, IMAGES_DIR)
+            file_url = f"/images/{filename}"
             
-            # Read file content
-            file_content = await file.read()
-            
-            # Upload to Google Drive
-            result = hybrid_storage.save_image_locally(file_content, filename, "products")
-            
-            if result["success"]:
-                uploaded_files.append({
-                    "filename": filename,
-                    "file_id": result["file_id"],
-                    "public_url": result["public_url"],
-                    "url": result["public_url"],  # For backward compatibility
-                    "original_name": file.filename
-                })
-            else:
-                failed_files.append({
-                    "filename": file.filename,
-                    "error": result["error"]
-                })
+            uploaded_files.append({
+                "filename": filename,
+                "url": file_url,
+                "original_name": file.filename
+            })
             
         except Exception as e:
             failed_files.append({
@@ -185,7 +162,7 @@ async def upload_multiple_product_images(
         "success": len(uploaded_files) > 0,
         "uploaded": uploaded_files,
         "failed": failed_files,
-        "message": f"Uploaded {len(uploaded_files)} images successfully"
+        "message": f"Uploaded {len(uploaded_files)} images successfully (local storage)"
     }
 
 @router.get("/{filename}")
