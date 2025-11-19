@@ -99,8 +99,9 @@ class SupabaseAuthService:
             User object
         """
         try:
-            # Verify token and get user
-            user = self.client.auth.get_user(token)
+            # Use admin client for token verification to avoid anon-key limitations
+            client = self.admin_client or self.client
+            user = client.auth.get_user(token)
             return user
         except Exception as e:
             raise HTTPException(status_code=401, detail="Invalid token")

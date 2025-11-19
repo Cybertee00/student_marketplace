@@ -1,0 +1,7 @@
+{
+  "name": "John",
+  "surname": "Doe",
+  "username": "johndoe",
+  "phone": "+27987654321"
+}
+

@@ -22,12 +22,23 @@ const LoginPage: React.FC = () => {
 
   // Redirect if already authenticated
   React.useEffect(() => {
-    console.log('LoginPage useEffect - isAuthenticated:', isAuthenticated, 'isLoading:', isLoading);
-    if (isAuthenticated) {
+    // Only redirect if we're sure user is authenticated (not loading)
+    if (!isLoading && isAuthenticated) {
       console.log('Redirecting to dashboard...');
-      navigate('/dashboard');
+      navigate('/dashboard', { replace: true });
     }
   }, [isAuthenticated, navigate, isLoading]);
+
+  // Failsafe to avoid infinite loading states
+  React.useEffect(() => {
+    if (!isLoading) return;
+
+    const timeout = setTimeout(() => {
+      console.warn('Login page loading timeout - this might indicate an issue');
+    }, 5000);
+
+    return () => clearTimeout(timeout);
+  }, [isLoading]);
 
   const {
     register,
@@ -42,6 +53,7 @@ const LoginPage: React.FC = () => {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <LoadingSpinner size="lg" />
+        <p className="mt-4 text-sm text-secondary-500">Checking authentication...</p>
       </div>
     );
   }

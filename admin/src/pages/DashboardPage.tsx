@@ -30,9 +30,13 @@ const DashboardPage: React.FC = () => {
     queryKey: ['dashboard-stats'],
     queryFn: () => apiService.getDashboardStats(),
     refetchInterval: 30000, // Refetch every 30 seconds
+    retry: 1, // Only retry once
+    retryDelay: 2000, // Wait 2 seconds before retry
+    staleTime: 60000, // Consider data stale after 1 minute
   });
 
-  if (isLoading) {
+  // Show loading only for initial load, not for refetches
+  if (isLoading && !stats) {
     return (
       <div className="flex items-center justify-center h-64">
         <LoadingSpinner size="lg" />
@@ -40,13 +44,22 @@ const DashboardPage: React.FC = () => {
     );
   }
 
-  if (error) {
+  // If error but we have cached data, show it with warning
+  if (error && !stats) {
     console.error('Dashboard error:', error);
     return (
       <div className="text-center py-12">
         <AlertCircle className="mx-auto h-12 w-12 text-danger-500" />
         <h3 className="mt-2 text-sm font-medium text-secondary-900">Error loading dashboard</h3>
-        <p className="mt-1 text-sm text-secondary-500">Please try again later.</p>
+        <p className="mt-1 text-sm text-secondary-500">
+          Could not connect to the API. Please check your connection or try again later.
+        </p>
+        <button
+          onClick={() => window.location.reload()}
+          className="mt-4 px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
+        >
+          Retry
+        </button>
         <details className="mt-4 text-left max-w-md mx-auto">
           <summary className="cursor-pointer text-sm text-secondary-600">Error details</summary>
           <pre className="mt-2 text-xs text-secondary-500 bg-secondary-100 p-2 rounded overflow-auto">
@@ -57,7 +70,21 @@ const DashboardPage: React.FC = () => {
     );
   }
 
-  if (!stats) return null;
+  // Use default/empty stats if API fails but we want to show something
+  const displayStats: DashboardStats = stats || {
+    total_revenue: 0,
+    total_orders: 0,
+    total_users: 0,
+    total_products: 0,
+    pending_orders: 0,
+    active_users: 0,
+    pending_approvals: 0,
+    revenue_trend: [],
+    revenue_by_month: [],
+    orders_by_status: [],
+    top_categories: [],
+    top_products: [],
+  };
 
   return (
     <div className="space-y-6">
@@ -81,7 +108,7 @@ const DashboardPage: React.FC = () => {
                     Total Revenue
                   </dt>
                   <dd className="text-lg font-medium text-secondary-900">
-                    R{stats.total_revenue.toLocaleString()}
+                    R{displayStats.total_revenue.toLocaleString()}
                   </dd>
                 </dl>
               </div>
@@ -101,7 +128,7 @@ const DashboardPage: React.FC = () => {
                     Total Users
                   </dt>
                   <dd className="text-lg font-medium text-secondary-900">
-                    {stats.total_users.toLocaleString()}
+                    {displayStats.total_users.toLocaleString()}
                   </dd>
                 </dl>
               </div>
@@ -121,7 +148,7 @@ const DashboardPage: React.FC = () => {
                     Total Products
                   </dt>
                   <dd className="text-lg font-medium text-secondary-900">
-                    {stats.total_products.toLocaleString()}
+                    {displayStats.total_products.toLocaleString()}
                   </dd>
                 </dl>
               </div>
@@ -141,7 +168,7 @@ const DashboardPage: React.FC = () => {
                     Total Orders
                   </dt>
                   <dd className="text-lg font-medium text-secondary-900">
-                    {stats.total_orders.toLocaleString()}
+                    {displayStats.total_orders.toLocaleString()}
                   </dd>
                 </dl>
               </div>
@@ -164,7 +191,7 @@ const DashboardPage: React.FC = () => {
                     Active Users
                   </dt>
                   <dd className="text-lg font-medium text-secondary-900">
-                    {stats.active_users.toLocaleString()}
+                    {displayStats.active_users?.toLocaleString() || '0'}
                   </dd>
                 </dl>
               </div>
@@ -184,7 +211,7 @@ const DashboardPage: React.FC = () => {
                     Pending Approvals
                   </dt>
                   <dd className="text-lg font-medium text-secondary-900">
-                    {stats.pending_approvals.toLocaleString()}
+                    {displayStats.pending_approvals?.toLocaleString() || '0'}
                   </dd>
                 </dl>
               </div>
@@ -204,7 +231,7 @@ const DashboardPage: React.FC = () => {
           <div className="card-content">
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={stats.revenue_trend}>
+                <LineChart data={displayStats.revenue_trend || []}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis 
                     dataKey="date" 
@@ -239,7 +266,7 @@ const DashboardPage: React.FC = () => {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={stats.top_categories}
+                    data={displayStats.top_categories || []}
                     cx="50%"
                     cy="50%"
                     labelLine={false}
@@ -248,7 +275,7 @@ const DashboardPage: React.FC = () => {
                     fill="#8884d8"
                     dataKey="total_products"
                   >
-                    {stats.top_categories.map((_, index) => (
+                    {(displayStats.top_categories || []).map((_, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
@@ -283,7 +310,7 @@ const DashboardPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-secondary-200">
-                {stats.top_products.map((product) => (
+                {(displayStats.top_products || []).map((product) => (
                   <tr key={product.id}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-secondary-900">
                       {product.title}
