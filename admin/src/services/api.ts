@@ -61,9 +61,15 @@ class ApiService {
     // Response interceptor to handle errors
     this.api.interceptors.response.use(
       (response) => response,
-      (error) => {
+      async (error) => {
         console.error('API Error:', error.response?.status, error.response?.data);
         if (error.response?.status === 401) {
+          try {
+            const { supabase } = await import('./supabase');
+            await supabase.auth.signOut();
+          } catch (signOutError) {
+            console.error('Failed to sign out from Supabase:', signOutError);
+          }
           localStorage.removeItem('admin_token');
           localStorage.removeItem('admin_user');
           window.location.href = '/login';
