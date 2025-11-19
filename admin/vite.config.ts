@@ -17,12 +17,12 @@ export default defineConfig({
     port: 3001,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'https://student-marketplace-api.onrender.com',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
       '/images': {
-        target: 'http://localhost:8000',
+        target: 'https://student-marketplace-api.onrender.com',
         changeOrigin: true,
       },
     },

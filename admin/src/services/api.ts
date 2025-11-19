@@ -26,8 +26,10 @@ class ApiService {
   private api: AxiosInstance;
 
   constructor() {
+    // Use environment variable for API URL, fallback to proxy for development
+    const apiBaseUrl = import.meta.env.VITE_API_URL || '/api';
     this.api = axios.create({
-      baseURL: '/api',
+      baseURL: apiBaseUrl.startsWith('http') ? apiBaseUrl : '/api',
       headers: {
         'Content-Type': 'application/json',
       },
