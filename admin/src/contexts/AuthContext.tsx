@@ -115,17 +115,49 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  const fetchProfileFromSupabase = async (session: Session) => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', session.user.id)
+      .single();
+
+    if (error || !data) {
+      throw error || new Error('Profile not found');
+    }
+
+    return {
+      id: data.id,
+      name: data.name,
+      surname: data.surname,
+      email: data.email,
+      phone: data.phone,
+      username: data.username,
+      profile_img: data.profile_img,
+      created_at: data.created_at,
+      is_email_verified: data.is_email_verified ?? false,
+      is_phone_verified: data.is_phone_verified ?? false,
+    } as User;
+  };
+
   const loadUserProfile = async (session: Session) => {
     if (!session?.access_token || !session.user) {
       throw new Error('No active session');
     }
 
-    const profilePromise = apiService.getCurrentUser();
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Profile request timed out')), 8000)
-    );
+    let currentUser: User;
 
-    const currentUser = await Promise.race([profilePromise, timeoutPromise]);
+    try {
+      const profilePromise = apiService.getCurrentUser();
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Profile request timed out')), 8000)
+      );
+
+      currentUser = await Promise.race([profilePromise, timeoutPromise]);
+    } catch (apiError) {
+      console.warn('Primary profile fetch failed, falling back to Supabase profile', apiError);
+      currentUser = await fetchProfileFromSupabase(session);
+    }
 
     setSession(session);
     setUser(currentUser);
