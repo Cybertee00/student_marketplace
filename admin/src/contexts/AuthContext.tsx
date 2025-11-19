@@ -109,7 +109,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       throw new Error('No active session');
     }
 
-    const currentUser = await apiService.getCurrentUser();
+    const profilePromise = apiService.getCurrentUser();
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Profile request timed out')), 8000)
+    );
+
+    const currentUser = await Promise.race([profilePromise, timeoutPromise]);
 
     setSession(session);
     setUser(currentUser);
