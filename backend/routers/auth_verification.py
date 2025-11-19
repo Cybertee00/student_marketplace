@@ -13,6 +13,7 @@ from database import get_db
 from models import User
 from schemas import EmailVerificationRequest, OTPVerificationRequest, ResendVerificationRequest
 from auth import get_password_hash, verify_password
+from supabase_config import supabase_admin
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 security = HTTPBearer()
@@ -254,25 +255,33 @@ async def resend_verification_email_endpoint(
         )
 
 @router.get("/check-verification")
-async def check_verification_status(
-    email: str,
-    db: Session = Depends(get_db)
-):
-    """Check if user's email is verified"""
+async def check_verification_status(email: str):
+    """Check if user's email is verified (Supabase profiles)"""
     try:
-        user = db.query(User).filter(User.email == email).first()
-        if not user:
+        client = supabase_admin
+        if not client:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Supabase admin client not configured"
+            )
+        
+        response = client.table("profiles").select(
+            "email,is_email_verified,is_phone_verified"
+        ).eq("email", email).single().execute()
+        
+        if not response.data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found"
             )
         
+        data = response.data
         return {
             "email": email,
-            "is_verified": user.is_email_verified,
+            "is_verified": data.get("is_email_verified", False),
             "verification_status": {
-                "email_verified": user.is_email_verified,
-                "phone_verified": user.is_phone_verified
+                "email_verified": data.get("is_email_verified", False),
+                "phone_verified": data.get("is_phone_verified", False)
             }
         }
         
