@@ -35,53 +35,49 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   useEffect(() => {
     let mounted = true;
 
-    const initSession = async () => {
+    const bootstrap = async () => {
+      setIsLoading(true);
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-
-        if (!mounted) return;
-
-        setSession(session);
-        if (session?.access_token && session?.user?.id) {
-          localStorage.setItem('admin_token', session.access_token);
-          loadUserProfile();
-        } else {
-          localStorage.removeItem('admin_token');
-          localStorage.removeItem('admin_user');
-          setUser(null);
+        await loadUserProfile();
+      } catch (error) {
+        console.warn('No active session found on load', error);
+        if (mounted) {
+          await clearAuthState();
+        }
+      } finally {
+        if (mounted) {
           setIsLoading(false);
         }
-      } catch (error) {
-        console.error('Error getting session:', error);
-        if (!mounted) return;
-
-        localStorage.removeItem('admin_token');
-        localStorage.removeItem('admin_user');
-        setUser(null);
-        setSession(null);
-        setIsLoading(false);
       }
     };
 
-    initSession();
+    bootstrap();
 
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (!mounted) return;
-      
-      setSession(session);
-      if (session?.access_token && session?.user?.id) {
-        localStorage.setItem('admin_token', session.access_token);
-        await loadUserProfile();
-      } else {
-        localStorage.removeItem('admin_token');
-        localStorage.removeItem('admin_user');
-        setUser(null);
-        setIsLoading(false);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
+        if (!mounted) {
+          return;
+        }
+
+        if (!session) {
+          await clearAuthState();
+          setIsLoading(false);
+          return;
+        }
+
+        setIsLoading(true);
+        try {
+          await loadUserProfile(session);
+        } catch (error) {
+          console.error('Auth state change handling failed:', error);
+          await clearAuthState();
+        } finally {
+          if (mounted) {
+            setIsLoading(false);
+          }
+        }
       }
-    });
+    );
 
     return () => {
       mounted = false;
@@ -89,149 +85,62 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
   }, []);
 
-  const loadUserProfile = async () => {
+  const clearAuthState = async () => {
     try {
-      setIsLoading(true);
-      
-      // First, try to get from Supabase directly (faster and more reliable)
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user?.id) {
-        throw new Error('No session found');
-      }
-
-      const profileResponse = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', session.user.id)
-        .single();
-
-      if (profileResponse.data) {
-        // Map Supabase profile to User type
-        const userFromSupabase = {
-          id: profileResponse.data.id,
-          name: profileResponse.data.name,
-          surname: profileResponse.data.surname,
-          email: profileResponse.data.email,
-          phone: profileResponse.data.phone,
-          username: profileResponse.data.username,
-          profile_img: profileResponse.data.profile_img,
-          created_at: profileResponse.data.created_at,
-          is_email_verified: profileResponse.data.is_email_verified || false,
-          is_phone_verified: profileResponse.data.is_phone_verified || false,
-        };
-        
-        setUser(userFromSupabase);
-        localStorage.setItem('admin_user', JSON.stringify(userFromSupabase));
-        setIsLoading(false);
-        return;
-      }
-
-      // Fallback: Try API (but don't wait too long)
-      try {
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Request timeout')), 3000);
-        });
-        
-        const currentUserPromise = apiService.getCurrentUser();
-        const currentUser = await Promise.race([currentUserPromise, timeoutPromise]);
-        setUser(currentUser);
-        localStorage.setItem('admin_user', JSON.stringify(currentUser));
-      } catch (apiError) {
-        console.warn('API call failed, using Supabase profile:', apiError);
-        // Already set user from Supabase above, so this is fine
-      }
+      await supabase.auth.signOut();
     } catch (error) {
-      console.error('Failed to get user profile:', error);
-      // Don't clear tokens on error - user might still be valid
-      // Only clear if it's a clear auth error
-      if (error instanceof Error && error.message.includes('401') || error.message.includes('Unauthorized')) {
-        localStorage.removeItem('admin_token');
-        localStorage.removeItem('admin_user');
-        setUser(null);
-      }
+      console.error('Error clearing Supabase session:', error);
     } finally {
+      localStorage.removeItem('admin_token');
+      localStorage.removeItem('admin_user');
+      setUser(null);
+      setSession(null);
       setIsLoading(false);
     }
   };
 
+  const loadUserProfile = async (existingSession?: Session | null) => {
+    const { data } = existingSession
+      ? { data: { session: existingSession } }
+      : await supabase.auth.getSession();
+
+    const session = data.session;
+    if (!session?.access_token || !session.user) {
+      throw new Error('No active session');
+    }
+
+    const currentUser = await apiService.getCurrentUser();
+
+    setSession(session);
+    setUser(currentUser);
+    localStorage.setItem('admin_token', session.access_token);
+    localStorage.setItem('admin_user', JSON.stringify(currentUser));
+
+    return currentUser;
+  };
+
   const login = async (credentials: LoginCredentials): Promise<boolean> => {
+    setIsLoading(true);
     try {
-      setIsLoading(true);
-      
-      // Use Supabase Auth for login
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: credentials.identifier.includes('@') 
-          ? credentials.identifier 
+        email: credentials.identifier.includes('@')
+          ? credentials.identifier
           : await getEmailFromIdentifier(credentials.identifier),
         password: credentials.password,
       });
 
-      if (error) throw error;
-
-      if (data.session) {
-        setSession(data.session);
-        localStorage.setItem('admin_token', data.session.access_token);
-        
-        // Get user profile from API
-        try {
-          const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Request timeout')), 10000);
-          });
-          
-          const currentUserPromise = apiService.getCurrentUser();
-          const response = await Promise.race([currentUserPromise, timeoutPromise]);
-          
-          setUser(response);
-          localStorage.setItem('admin_user', JSON.stringify(response));
-          setIsLoading(false);
-          return true;
-        } catch (profileError) {
-          console.error('Failed to get user profile from API:', profileError);
-          // If profile fetch fails, try to get from Supabase directly
-          try {
-            const profileResponse = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', data.session.user.id)
-              .single();
-            
-            if (profileResponse.data) {
-              // Map Supabase profile to User type
-              const userFromSupabase = {
-                id: profileResponse.data.id,
-                name: profileResponse.data.name,
-                surname: profileResponse.data.surname,
-                email: profileResponse.data.email,
-                phone: profileResponse.data.phone,
-                username: profileResponse.data.username,
-                profile_img: profileResponse.data.profile_img,
-                created_at: profileResponse.data.created_at,
-                is_email_verified: profileResponse.data.is_email_verified || false,
-                is_phone_verified: profileResponse.data.is_phone_verified || false,
-              };
-              
-              setUser(userFromSupabase);
-              localStorage.setItem('admin_user', JSON.stringify(userFromSupabase));
-              setIsLoading(false);
-              return true;
-            }
-          } catch (supabaseError) {
-            console.error('Failed to get profile from Supabase:', supabaseError);
-          }
-          
-          // If both fail, still allow login but show warning
-          console.warn('Could not fetch user profile, but login succeeded');
-          setIsLoading(false);
-          return true; // Still return true since Supabase login succeeded
-        }
+      if (error || !data.session) {
+        throw error || new Error('Unable to start session');
       }
-      
-      setIsLoading(false);
-      return false;
+
+      await loadUserProfile(data.session);
+      return true;
     } catch (error) {
       console.error('Login failed:', error);
-      setIsLoading(false);
+      await clearAuthState();
       return false;
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -251,11 +160,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
-    localStorage.removeItem('admin_token');
-    localStorage.removeItem('admin_user');
-    setUser(null);
-    setSession(null);
+    await clearAuthState();
   };
 
   const isAuthenticated = !!user && !!session;
