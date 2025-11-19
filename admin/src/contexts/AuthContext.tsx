@@ -38,7 +38,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const bootstrap = async () => {
       setIsLoading(true);
       try {
-        await loadUserProfile();
+        const { data } = await supabase.auth.getSession();
+        const activeSession = data.session;
+
+        if (!mounted) return;
+
+        if (!activeSession) {
+          await clearAuthState();
+          return;
+        }
+
+        await loadUserProfile(activeSession);
       } catch (error) {
         console.warn('No active session found on load', error);
         if (mounted) {
@@ -99,12 +109,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const loadUserProfile = async (existingSession?: Session | null) => {
-    const { data } = existingSession
-      ? { data: { session: existingSession } }
-      : await supabase.auth.getSession();
-
-    const session = data.session;
+  const loadUserProfile = async (session: Session) => {
     if (!session?.access_token || !session.user) {
       throw new Error('No active session');
     }
