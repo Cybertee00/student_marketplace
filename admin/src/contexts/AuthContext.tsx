@@ -38,19 +38,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const bootstrap = async () => {
       setIsLoading(true);
       try {
-        const { data } = await supabase.auth.getSession();
-        const activeSession = data.session;
-
+        const { data, error } = await supabase.auth.getSession();
         if (!mounted) return;
 
+        if (error) {
+          throw error;
+        }
+
+        const activeSession = data.session;
         if (!activeSession) {
-          await clearAuthState();
+          localStorage.removeItem('admin_token');
+          localStorage.removeItem('admin_user');
+          setSession(null);
+          setUser(null);
           return;
         }
 
         await loadUserProfile(activeSession);
       } catch (error) {
-        console.warn('No active session found on load', error);
+        console.warn('Failed to bootstrap session', error);
         if (mounted) {
           await clearAuthState();
         }
