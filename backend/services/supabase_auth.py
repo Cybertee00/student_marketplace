@@ -99,7 +99,6 @@ class SupabaseAuthService:
             User object
         """
         try:
-            # Use admin client for token verification to avoid anon-key limitations
             client = self.admin_client or self.client
             user = client.auth.get_user(token)
             return user

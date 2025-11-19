@@ -4,7 +4,7 @@ from database import get_db
 from models import User
 from schemas import UserCreate, UserResponse, Token, LoginRequest
 from services.supabase_auth import supabase_auth, get_supabase_user
-from supabase_config import supabase
+from supabase_config import supabase, supabase_admin
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -110,8 +110,9 @@ async def get_current_user_info(user = Depends(get_supabase_user)):
         # Supabase get_user returns UserResponse with .user attribute
         user_id = user.user.id if hasattr(user, 'user') else user.id
         
-        # Get profile from Supabase
-        profile_response = supabase.table("profiles").select("*").eq("id", user_id).single().execute()
+        # Get profile from Supabase (use service role client if available)
+        client = supabase_admin or supabase
+        profile_response = client.table("profiles").select("*").eq("id", user_id).single().execute()
         
         if not profile_response.data:
             raise HTTPException(
